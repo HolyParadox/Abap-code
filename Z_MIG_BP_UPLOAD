@@ -1,0 +1,35 @@
+
+REPORT z_mig_bp_upload.
+
+*---------------------------------------------------------------------*
+* Title:     Z_MIG_BP_UPLOAD (Demo)
+* Author:    Lea Abu Kou
+* Datrum:    07/01/2026
+* Purpose:   Demonstration of CSV upload, BAPI processing and ALV
+*            visualization with validation feedback.
+*---------------------------------------------------------------------*
+
+TYPE-POOLS: slis.
+
+
+INCLUDE z_mig_bp_upload_top.
+INCLUDE z_mig_bp_upload_io.
+INCLUDE z_mig_bp_upload_f1.
+
+*---------------------------------------------------------------------*
+* AT SELECTION-SCREEN
+*---------------------------------------------------------------------*
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_file.
+  PERFORM f_file_get USING p_file .
+
+
+*---------------------------------------------------------------------*
+* START-OF-SELECTION
+*---------------------------------------------------------------------*
+START-OF-SELECTION.
+  PERFORM upload     USING p_file.
+  PERFORM add_partner.
+  CALL SCREEN 100.
+
+*
