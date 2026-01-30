@@ -1,0 +1,409 @@
+*&---------------------------------------------------------------------*
+*& Include          Z_MIG_BP_UPLOAD_F1
+*&---------------------------------------------------------------------*
+
+*&---------------------------------------------------------------------*
+*&           FORM f_file_get
+*&---------------------------------------------------------------------*
+
+
+FORM f_file_get USING l_text.
+
+
+  DATA: l_filetable TYPE filetable,
+        l_filetab_h TYPE filetable WITH HEADER LINE.
+  DATA gv_rc TYPE i.
+
+  CALL METHOD cl_gui_frontend_services=>file_open_dialog
+    EXPORTING
+      window_title            = 'Open file'
+    CHANGING
+      file_table              = l_filetable
+      rc                      = gv_rc
+    EXCEPTIONS
+      file_open_dialog_failed = 1
+      cntl_error              = 2
+      error_no_gui            = 3
+      not_supported_by_gui    = 4
+      OTHERS                  = 5.
+
+  IF sy-subrc <> 0.
+
+  ELSE.
+
+    READ TABLE l_filetable INTO l_filetab_h INDEX 1.
+    p_file = l_filetab_h-filename.
+
+  ENDIF.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*&           FORM  upload
+*&---------------------------------------------------------------------*
+
+FORM upload USING l_text.
+
+
+  CALL FUNCTION 'GUI_UPLOAD'
+    EXPORTING
+      filename                = l_text
+      filetype                = 'ASC'
+      has_field_separator     = 'X'
+      read_by_line            = 'X'
+      replacement             = ','
+    TABLES
+      data_tab                = it_file
+    EXCEPTIONS
+      file_open_error         = 1
+      file_read_error         = 2
+      no_batch                = 3
+      gui_refuse_filetransfer = 4
+      invalid_type            = 5
+      no_authority            = 6
+      unknown_error           = 7
+      bad_data_format         = 8
+      header_not_allowed      = 9
+      separator_not_allowed   = 10
+      header_too_long         = 11
+      unknown_dp_error        = 12
+      access_denied           = 13
+      dp_out_of_memory        = 14
+      disk_full               = 15
+      dp_timeout              = 16
+      OTHERS                  = 17.
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+  CLEAR ls_file.
+
+
+
+  LOOP AT it_file INTO ls_file .
+    IF sy-tabix = 1.
+      CONTINUE.
+    ENDIF.
+    SPLIT ls_file AT ',' INTO TABLE it_tmp.
+
+    LOOP AT it_tmp INTO ls_tmp  .
+
+
+      CASE sy-tabix  .
+
+        WHEN 1.
+
+          ls_output-number   = ls_tmp-ts_file.
+
+        WHEN 2.
+
+          ls_output-bu_group = ls_tmp-ts_file.
+
+        WHEN 3.
+
+          ls_output-title    = ls_tmp-ts_file.
+
+        WHEN 4.
+
+          ls_output-type     = ls_tmp-ts_file.
+
+        WHEN 5.
+
+          ls_output-vorname  = ls_tmp-ts_file.
+
+        WHEN 6.
+
+          ls_output-nachname = ls_tmp-ts_file.
+
+
+
+
+      ENDCASE.
+
+    ENDLOOP.
+    APPEND ls_output TO it_output.
+    CLEAR ls_output.
+
+
+  ENDLOOP.
+
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&           FORM  add_partner
+*&---------------------------------------------------------------------*
+
+
+FORM add_partner.
+
+  DATA : lv_category TYPE bapibus1006_head-partn_cat.
+  DATA : lv_index TYPE i.
+  lv_category ='1'.
+
+
+  LOOP AT it_output INTO ls_output.
+
+    CLEAR ls_Bp_cen.
+    CLEAR ls_bp_person.
+    lv_index = sy-tabix.
+
+    MOVE-CORRESPONDING ls_output TO ls_Bp_cen.
+    MOVE-CORRESPONDING ls_output TO ls_bp_person.
+
+
+
+
+    CALL FUNCTION 'BAPI_BUPA_FS_CREATE_FROM_DATA2'
+      EXPORTING
+        partnercategory   = lv_category
+        centraldata       = ls_Bp_cen
+        centraldataperson = ls_bp_person
+        testrun           = va_test
+      IMPORTING
+        businesspartner   = ls_output-number
+      TABLES
+        return            = it_ret.
+
+
+
+    CLEAR ls_return.
+    LOOP AT it_ret INTO ls_Ret.
+
+      MOVE-CORRESPONDING ls_Ret TO ls_return.
+
+      CASE ls_ret-type .
+        WHEN 'S'.
+
+          ls_output-flag = '@08@'.
+
+          IF va_test EQ abap_false.
+            COMMIT WORK.
+          ENDIF.
+
+        WHEN 'W'.
+
+          ls_output-flag = '@09@'.
+
+        WHEN 'E'.
+
+          ls_output-flag = '@0A@'.
+
+      ENDCASE.
+
+      MODIFY  it_output FROM ls_output INDEX lv_index.
+
+
+      APPEND ls_return TO it_Return.
+      CLEAR ls_return.
+      CLEAR ls_Ret.
+    ENDLOOP.
+
+    CLEAR ls_output .
+
+  ENDLOOP.
+
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*&           FORM  display_table_POP
+*&---------------------------------------------------------------------*
+
+
+FORM display_table_POP .
+
+  IF custom_container_r IS INITIAL.
+* create container
+    CREATE OBJECT custom_container_r
+      EXPORTING
+        container_name              = mycontainer_r
+      EXCEPTIONS
+        cntl_error                  = 1
+        cntl_system_error           = 2
+        create_error                = 3
+        lifetime_error              = 4
+        lifetime_dynpro_dynpro_link = 5.
+    IF sy-subrc <> 0.
+      MESSAGE ' Erreur Container' TYPE 'I'.
+    ENDIF.
+* create alv grid
+    CREATE OBJECT gr_grid_r
+      EXPORTING
+        i_parent          = custom_container_r
+      EXCEPTIONS
+        error_cntl_create = 1
+        error_cntl_init   = 2
+        error_cntl_link   = 3
+        error_dp_create   = 4
+        OTHERS            = 5.
+    IF sy-subrc <> 0.
+      MESSAGE ' Erreur Grid' TYPE 'I'.
+    ENDIF.
+
+
+*Prepare fieldCatalog
+    PERFORM Prepar_Catalog_POP.
+* Prepare Layout
+    PERFORM Prepar_Layout_POP.
+* Fist Display
+    PERFORM First_Display_POP.
+
+  ELSE .
+    CALL METHOD gr_grid_R->refresh_table_display
+      EXCEPTIONS
+        finished = 1
+        OTHERS   = 2.
+  ENDIF.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&           FORM  Display_Table
+*&---------------------------------------------------------------------*
+
+FORM Display_Table .
+
+  IF custom_container IS INITIAL.
+* create container
+    CREATE OBJECT custom_container
+      EXPORTING
+        container_name              = mycontainer
+      EXCEPTIONS
+        cntl_error                  = 1
+        cntl_system_error           = 2
+        create_error                = 3
+        lifetime_error              = 4
+        lifetime_dynpro_dynpro_link = 5.
+    IF sy-subrc <> 0.
+      MESSAGE 'Erreur Container' TYPE 'I'.
+    ENDIF.
+* create alv grid
+    CREATE OBJECT gr_grid
+      EXPORTING
+        i_parent          = custom_container
+      EXCEPTIONS
+        error_cntl_create = 1
+        error_cntl_init   = 2
+        error_cntl_link   = 3
+        error_dp_create   = 4
+        OTHERS            = 5.
+    IF sy-subrc <> 0.
+      MESSAGE 'Erreur grid' TYPE 'I'.
+    ENDIF.
+
+
+
+* prepare FieldCatalog
+    PERFORM Prepar_Catalog.
+* Prepare Layout
+    PERFORM Prepar_Layout.
+* Fist Display
+    PERFORM First_Display.
+
+  ELSE .
+    CALL METHOD gr_grid->refresh_table_display
+      EXCEPTIONS
+        finished = 1
+        OTHERS   = 2.
+  ENDIF.
+
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&           FORM  Prepar_Catalog
+*&---------------------------------------------------------------------*
+
+FORM Prepar_Catalog .
+
+
+  CLEAR gt_fieldcat.
+  APPEND VALUE #( fieldname = 'FLAG'      coltext = 'Flag'        outputlen = 4  icon = 'X'   ) TO gt_fieldcat.
+  APPEND VALUE #( fieldname = 'number'    coltext = 'Number'      outputlen = 10 )              TO gt_fieldcat.
+  APPEND VALUE #( fieldname = 'bu_group'  coltext = 'Bu_group'    outputlen = 4  )              TO gt_fieldcat.
+  APPEND VALUE #( fieldname = 'title'    coltext  = 'Title'       outputlen = 4  )              TO gt_fieldcat.
+  APPEND VALUE #( fieldname = 'type'      coltext = 'Type'        outputlen = 1  )              TO gt_fieldcat.
+  APPEND VALUE #( fieldname = 'vorname'   coltext = 'Vorname'     outputlen = 40 )              TO gt_fieldcat.
+  APPEND VALUE #( fieldname = 'Nachname'  coltext = 'Nachname'    outputlen = 40 )              TO gt_fieldcat.
+
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&           FORM Prepar_catalo pop up screen
+*&---------------------------------------------------------------------*
+
+FORM prepar_catalog_POP .
+
+  CLEAR gt_fieldcat_r.
+  APPEND VALUE #( fieldname = 'type'          coltext = 'Type'          outputlen = 1   )       TO gt_fieldcat_r.
+  APPEND VALUE #( fieldname = 'id  '          coltext = 'ID'            outputlen = 20  )       TO gt_fieldcat_r.
+  APPEND VALUE #( fieldname = 'number'        coltext = 'Number'        outputlen = 3   )       TO gt_fieldcat_r.
+  APPEND VALUE #( fieldname = 'MESSAGE'       coltext = 'MESSAGE'       outputlen = 220 )       TO gt_fieldcat_r.
+  APPEND VALUE #( fieldname = 'MESSAGE_V1'    coltext = 'MESSAGE_V1'    outputlen = 50  )       TO gt_fieldcat_r.
+  APPEND VALUE #( fieldname = 'MESSAGE_V2'    coltext = 'MESSAGE_V2'    outputlen = 50  )       TO gt_fieldcat_r.
+
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&           FORM   Prepar_layout
+*&---------------------------------------------------------------------*
+FORM prepar_layout .
+
+  gs_layout-zebra       = 'X'.
+  gs_layout-smalltitle  = 'X'.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&           FORM   Prepar_layout pop up screen
+*&---------------------------------------------------------------------*
+
+FORM prepar_layout_POP.
+
+  gs_layout_r-zebra      = 'X'.
+  gs_layout_r-smalltitle = 'X'.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*&           FORM   First_display
+*&---------------------------------------------------------------------*
+
+FORM First_Display .
+
+  gr_grid->set_table_for_first_display( EXPORTING
+                                         i_bypassing_buffer = abap_false  " Puffer ausschalten
+                                         i_save             = 'A'         " Anzeigevariante sichern
+                                         is_layout          = gs_layout  " Layout
+                                       CHANGING
+                                         it_fieldcatalog    = gt_fieldcat[]     " Feldkatalog
+                                         it_outtab          = it_output[]  ). " Ausgabetabelle
+
+* Event-Handler des ALV
+  SET HANDLER  lcl_events=>on_double_click FOR gr_grid.
+
+ENDFORM.
+
+
+
+*&---------------------------------------------------------------------*
+*&           FORM   first_display Popup screen
+*&---------------------------------------------------------------------*
+
+
+FORM First_Display_POP .
+
+  gr_grid_r->set_table_for_first_display( EXPORTING
+                                         i_bypassing_buffer = abap_false  " Puffer ausschalten
+                                         i_save             = 'A'         " Anzeigevariante sichern
+                                         is_layout          = gs_layout_r  " Layout
+                                       CHANGING
+                                         it_fieldcatalog    = gt_fieldcat_R[] " Feldkatalog
+                                         it_outtab          = it_return[] ). " Ausgabetabelle
+
+ENDFORM.
