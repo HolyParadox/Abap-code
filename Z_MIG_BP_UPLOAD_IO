@@ -1,0 +1,79 @@
+*&---------------------------------------------------------------------*
+*& Include          Z_MIG_BP_UPLOAD_IO
+*&---------------------------------------------------------------------*
+
+*&---------------------------------------------------------------------*
+*&            status_0100
+*&---------------------------------------------------------------------*
+
+MODULE status_0100 OUTPUT.
+
+  SET PF-STATUS 'STATUS_100'.
+
+  PERFORM display_table.
+ENDMODULE.
+
+MODULE user_command_0100 INPUT.
+
+  CASE ok_code.
+    WHEN 'BACK'. "Go Back
+      LEAVE TO SCREEN 0.
+    WHEN 'EXIT'.
+
+      IF custom_container IS BOUND.
+        CALL METHOD custom_container->free.
+      ENDIF.
+
+
+      LEAVE TO SCREEN 0.
+    WHEN OTHERS.
+  ENDCASE.
+
+  CLEAR ok_code.
+
+ENDMODULE.
+
+*&---------------------------------------------------------------------*
+*&            status_0200
+*&---------------------------------------------------------------------*
+MODULE status_0200 OUTPUT.
+
+  SET PF-STATUS 'STATUS_200'.
+
+  PERFORM display_table_POP.
+ENDMODULE.
+
+MODULE user_command_0200 INPUT.
+
+  CASE ok_code_r.
+
+    WHEN 'EXIT'.
+      IF custom_container_r IS BOUND.
+        CALL METHOD custom_container_r->free.
+      ENDIF.
+
+      LEAVE TO SCREEN 0.
+    WHEN OTHERS.
+  ENDCASE.
+
+  CLEAR ok_code_r.
+
+ENDMODULE.
+
+
+CLASS lcl_events DEFINITION.
+  PUBLIC SECTION.
+    CLASS-METHODS: on_double_click FOR EVENT double_click OF cl_gui_alv_grid
+      IMPORTING
+        e_row
+        e_column.
+ENDCLASS.
+
+*&---------------------------------------------------------------------*
+*&            Screen 200 – Return message popup
+*&---------------------------------------------------------------------*
+CLASS lcl_events IMPLEMENTATION.
+  METHOD on_double_click.
+    CALL SCREEN 200  STARTING AT 1 1.
+  ENDMETHOD.
+ENDCLASS.
